@@ -26,6 +26,10 @@ MSG_MONGO_01="process mongod is not running"
 MSG_MONGO_02="exec mongo shell failed"
 MSG_MONGO_03="not all nodes are recognized by cluster"
 MSG_MONGO_04="some nodes are not health"
+# postgres
+MSG_PG_01="process postgres is not running"
+MSG_PG_02="can't fetch pg's running tasks"
+MSG_PG_03="can't detect sender or receiver task"
 
 main() {
     # single-instance mechanism
@@ -135,6 +139,23 @@ mongo_monitor() {
     fi
     if echo "$all_health" | grep "0" >/dev/null 2>&1; then
         echo "04"
+        return 0
+    fi
+}
+
+pg_monitor() {
+    if ! pgrep postgres >/dev/null 2>&1; then
+        echo "01"
+        return 0
+    fi
+    pg_status_raw=""
+    if ! pg_status_raw=$(ps -ef | grep postgres); then
+        echo "02"
+        return 0
+    fi
+    pg_wal_info=$(echo "$pg_status_raw" | sed -n '/wal sender/p; /wal receiver/p')
+    if [ -z "$pg_wal_info" ]; then
+        echo "03"
         return 0
     fi
 }
