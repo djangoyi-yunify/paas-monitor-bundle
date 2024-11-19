@@ -20,6 +20,7 @@ robot_prefix="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key="
 # message definition
 # common
 MSG_C00="wrong input number, do nothing"
+MSG_C99="this is a test"
 # mongo
 MSG_MONGO_01="process mongod is not running"
 MSG_MONGO_02="exec mongo shell failed"
@@ -101,6 +102,11 @@ MYPOSTDATA
     echo "$postData"
     echo $robot_url
     # curl -s -XPOST -H 'Content-Type: application/json' $robot_url -d "$postData1" >/dev/null 2>&1 | :
+}
+
+# just for test
+test_monitor() {
+    echo "C99"
 }
 
 # $1 - node count
