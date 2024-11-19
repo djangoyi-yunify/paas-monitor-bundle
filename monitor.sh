@@ -18,9 +18,13 @@ ROBOT_ID=
 robot_prefix="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key="
 
 # message definition
+# common
+MSG_C00="wrong input number, do nothing"
 # mongo
-MSG_MONGO_01="11111"
-MSG_MONGO_02="22222"
+MSG_MONGO_01="process mongod is not running"
+MSG_MONGO_02="exec mongo shell failed"
+MSG_MONGO_03="not all nodes are recognized by cluster"
+MSG_MONGO_04="some nodes are not health"
 
 main() {
     # single-instance mechanism
@@ -59,10 +63,21 @@ main() {
 
 # $1 - cluster type
 # $2 - msg id
+getRealMsg() {
+    res=""
+    if [ ${2:0:1} = "C" ]; then
+        eval "res=\${MSG_$2:-unknown message id}"
+    else
+        eval "res=\${MSG_$1_$2:-unknown message id}"
+    fi
+    echo $res
+}
+
+# $1 - cluster type
+# $2 - msg id
 # $3 - robot id
 sendMsg() {
-    show_msg=""
-    eval "show_msg=\${MSG_$1_$2:-unknown message}"
+    show_msg=$(getRealMsg $1 $2)
     content=$(cat<<MYCONTENT
 Instance: $INSTANCE_ID, ClusterType: $(echo $1 | tr '[:upper:]' '[:lower:]')
 $show_msg
@@ -88,8 +103,31 @@ MYPOSTDATA
     # curl -s -XPOST -H 'Content-Type: application/json' $robot_url -d "$postData1" >/dev/null 2>&1 | :
 }
 
+# $1 - node count
 mongo_monitor() {
-    echo "01"
+    if [ $# -lt 1 ]; then
+        echo "C00"
+        return 0
+    fi
+    if ! pgrep mongod >/dev/null 2>&1; then
+        echo "01"
+        return 0
+    fi
+    mongo_status_raw=""
+    if ! mongo_status_raw=$(mongo -u qc_master -p $(cat /data/pitrix.pwd) --authenticationDatabase admin --eval 'printjson(rs.status().members)' --quiet); then
+        echo "02"
+        return 0
+    fi
+    all_health=$(echo "$mongo_status_raw" | sed -n '/"health" : [01]/p')
+    all_cnt=$(echo "$all_health" | wc -l)
+    if ! [ "$1" = "$all_cnt" ]; then
+        echo "03"
+        return 0
+    fi
+    if echo "$all_health" | grep "0" >/dev/null 2>&1; then
+        echo "04"
+        return 0
+    fi
 }
 
 main $@
