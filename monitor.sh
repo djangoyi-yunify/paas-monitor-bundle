@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -eu
 set -o pipefail
 
@@ -109,6 +109,9 @@ test_monitor() {
     echo "C99"
 }
 
+# mongo exec path
+mongo_path=/usr/bin/mongo
+
 # $1 - node count
 mongo_monitor() {
     if [ $# -lt 1 ]; then
@@ -120,7 +123,7 @@ mongo_monitor() {
         return 0
     fi
     mongo_status_raw=""
-    if ! mongo_status_raw=$(mongo -u qc_master -p $(cat /data/pitrix.pwd) --authenticationDatabase admin --eval 'printjson(rs.status().members)' --quiet); then
+    if ! mongo_status_raw=$($mongo_path -u qc_master -p $(cat /data/pitrix.pwd) --authenticationDatabase admin --eval 'printjson(rs.status().members)' --quiet); then
         echo "02"
         return 0
     fi
