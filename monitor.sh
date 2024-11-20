@@ -17,9 +17,13 @@ ROBOT_ID=
 # robot url prefix
 robot_prefix="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key="
 
+# redis-cli path
+REDIS_CLI_PATH_LIST="/usr/bin/redis-cli,/opt/redis-3.0.5/bin/redis-cli"
+
 # message definition
 # common
 MSG_C00="wrong input number, do nothing"
+MSG_C01="can't locate the path of redis-cli"
 MSG_C99="this is a test"
 # mongo
 MSG_MONGO_01="process mongod is not running"
@@ -35,6 +39,9 @@ MSG_REDISREPLICA_01="process redis-server is not running"
 MSG_REDISREPLICA_02="exec redis-cli failed"
 MSG_REDISREPLICA_03="can't fetch redis role"
 MSG_REDISREPLICA_04="not all slave nodes are found by master"
+# rediscluster
+MSG_REDISCLUSTER_01="process redis-server is not running"
+MSG_REDISCLUSTER_01="exec redis-cli failed"
 
 main() {
     # single-instance mechanism
@@ -138,7 +145,7 @@ mongo_monitor() {
     fi
     all_health=$(echo "$mongo_status_raw" | sed -n '/"health" : [01]/p')
     all_cnt=$(echo "$all_health" | wc -l)
-    if ! [ "$1" = "$all_cnt" ]; then
+    if [ "$1" -ne "$all_cnt" ]; then
         echo "03"
         return 0
     fi
@@ -165,11 +172,36 @@ pg_monitor() {
     fi
 }
 
-# redis-cli path
+# get redis-cli path
 # no acl settings for redis version less then 6.0
-redis_cli_path=/usr/bin/redis-cli
+# but they use 'requirepass' to setup password
+# $1 - password (optional)
+get_rediscli() {
+    res=""
+    real_path=""
+    for line in $(echo $REDIS_CLI_PATH_LIST | tr ',' '\n'); do
+        if [ -f "$line" ]; then
+            real_path=$line
+            break
+        fi
+    done
+    if [ -z "$real_path" ]; then
+        return
+    fi
+    # test if redis-cli support --no-auth-warning
+    if $real_path --no-auth-warning info >/dev/null 2>&1; then
+        res="$real_path --no-auth-warning"
+    else
+        res="$real_path"
+    fi
+    if [ $# -gt 0 ]; then
+        res="$res -a $1"
+    fi
+    echo "$res"
+}
 
-# $1 - node count
+# $1 - redis node count
+# $2 - password (optional)
 redisreplica_monitor() {
     if [ $# -lt 1 ]; then
         echo "C00"
@@ -179,8 +211,15 @@ redisreplica_monitor() {
         echo "01"
         return 0
     fi
+    redis_node_cnt=$1
+    shift
+    redis_cli=$(get_rediscli $@)
+    if [ -z "$redis_cli" ]; then
+        echo "C01"
+        return 0
+    fi
     redis_replica_raw=""
-    if ! redis_replica_raw=$($redis_cli_path info replication); then
+    if ! redis_replica_raw=$($redis_cli info replication); then
         echo "02"
         return 0
     fi
@@ -194,13 +233,13 @@ redisreplica_monitor() {
         return 0
     fi
     redis_role_info=""
-    if ! redis_role_info=$($redis_cli_path role); then
+    if ! redis_role_info=$($redis_cli role); then
         echo "02"
         return 0
     fi
-    want_line_cnt=$((2+($1-1)*3))
+    want_line_cnt=$((2+($redis_node_cnt-1)*3))
     real_line_cnt=$(echo "$redis_role_info" | wc -l)
-    if ! [ "$want_line_cnt" = "$real_line_cnt" ]; then
+    if [ "$want_line_cnt" -ne "$real_line_cnt" ]; then
         echo "04"
         return 0
     fi
