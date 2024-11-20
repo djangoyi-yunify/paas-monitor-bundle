@@ -41,7 +41,10 @@ MSG_REDISREPLICA_03="can't fetch redis role"
 MSG_REDISREPLICA_04="not all slave nodes are found by master"
 # rediscluster
 MSG_REDISCLUSTER_01="process redis-server is not running"
-MSG_REDISCLUSTER_01="exec redis-cli failed"
+MSG_REDISCLUSTER_02="exec redis-cli failed"
+MSG_REDISCLUSTER_03="not all nodes are recognized by cluster"
+MSG_REDISCLUSTER_04="can't fetch redis role"
+MSG_REDISCLUSTER_05="not all slave nodes are found by master"
 
 main() {
     # single-instance mechanism
@@ -237,10 +240,68 @@ redisreplica_monitor() {
         echo "02"
         return 0
     fi
-    want_line_cnt=$((2+($redis_node_cnt-1)*3))
+    want_line_cnt=$((2+(redis_node_cnt-1)*3))
     real_line_cnt=$(echo "$redis_role_info" | wc -l)
     if [ "$want_line_cnt" -ne "$real_line_cnt" ]; then
         echo "04"
+        return 0
+    fi
+}
+
+# $1 - redis shard count
+# $2 - redis replica count
+# $3 - password (optional)
+rediscluster_monitor() {
+    if [ $# -lt 2 ]; then
+        echo "C00"
+        return 0
+    fi
+    if ! pgrep redis-server >/dev/null 2>&1; then
+        echo "01"
+        return 0
+    fi
+    redis_shard_cnt=$1
+    redis_replica_cnt=$2
+    shift 2
+    redis_cli=$(get_rediscli $@)
+    if [ -z "$redis_cli" ]; then
+        echo "C01"
+        return 0
+    fi
+    redis_cluster_raw=""
+    if ! redis_cluster_raw=$($redis_cli cluster nodes); then
+        echo "02"
+        return 0
+    fi
+    want_cluster_node_cnt=$((redis_shard_cnt*(redis_replica_cnt+1)))
+    real_cluster_node_cnt=$(echo "$redis_cluster_raw" | wc -l)
+    if [ "$want_cluster_node_cnt" -ne "$real_cluster_node_cnt" ]; then
+        echo "03"
+        return 0
+    fi
+    redis_replica_raw=""
+    if ! redis_replica_raw=$($redis_cli info replication); then
+        echo "02"
+        return 0
+    fi
+    redis_role=$(echo "$redis_replica_raw" | sed -n '/^role/p' | sed 's/role://' | tr -d [:space:])
+    if [ -z "$redis_role" ]; then
+        echo "04"
+        return 0
+    fi
+    if [ "$redis_role" = "slave" ]; then
+        # do nothing when the node's role is slave
+        return 0
+    fi
+    redis_role_info=""
+    if ! redis_role_info=$($redis_cli role); then
+        echo "02"
+        return 0
+    fi
+    want_line_cnt=$((2+redis_replica_cnt*3))
+    real_line_cnt=$(echo "$redis_role_info" | wc -l)
+    if [ "$want_line_cnt" -ne "$real_line_cnt" ]; then
+        echo "05"
         return 0
     fi
 }
