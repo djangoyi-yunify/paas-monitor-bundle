@@ -30,6 +30,11 @@ MSG_MONGO_04="some nodes are not health"
 MSG_PG_01="process postgres is not running"
 MSG_PG_02="can't fetch pg's running tasks"
 MSG_PG_03="can't detect sender or receiver task"
+# redisreplica
+MSG_REDISREPLICA_01="process redis-server is not running"
+MSG_REDISREPLICA_02="exec redis-cli failed"
+MSG_REDISREPLICA_03="can't fetch redis role"
+MSG_REDISREPLICA_04="not all slave nodes are found by master"
 
 main() {
     # single-instance mechanism
@@ -156,6 +161,47 @@ pg_monitor() {
     pg_wal_info=$(echo "$pg_status_raw" | sed -n '/wal sender/p; /wal receiver/p')
     if [ -z "$pg_wal_info" ]; then
         echo "03"
+        return 0
+    fi
+}
+
+# redis-cli path
+# no acl settings for redis version less then 6.0
+redis_cli_path=/usr/bin/redis-cli
+
+# $1 - node count
+redisreplica_monitor() {
+    if [ $# -lt 1 ]; then
+        echo "C00"
+        return 0
+    fi
+    if ! pgrep redis-server >/dev/null 2>&1; then
+        echo "01"
+        return 0
+    fi
+    redis_replica_raw=""
+    if ! redis_replica_raw=$($redis_cli_path info replication); then
+        echo "02"
+        return 0
+    fi
+    redis_role=$(echo "$redis_replica_raw" | sed -n '/^role/p' | sed 's/role://' | tr -d [:space:])
+    if [ -z "$redis_role" ]; then
+        echo "03"
+        return 0
+    fi
+    if [ "$redis_role" = "slave" ]; then
+        # do nothing when the node's role is slave
+        return 0
+    fi
+    redis_role_info=""
+    if ! redis_role_info=$($redis_cli_path role); then
+        echo "02"
+        return 0
+    fi
+    want_line_cnt=$((2+($1-1)*3))
+    real_line_cnt=$(echo "$redis_role_info" | wc -l)
+    if ! [ "$want_line_cnt" = "$real_line_cnt" ]; then
+        echo "04"
         return 0
     fi
 }
