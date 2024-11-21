@@ -45,6 +45,11 @@ MSG_REDISCLUSTER_02="exec redis-cli failed"
 MSG_REDISCLUSTER_03="not all nodes are recognized by cluster"
 MSG_REDISCLUSTER_04="can't fetch redis role"
 MSG_REDISCLUSTER_05="not all slave nodes are found by master"
+# mysql
+MSG_MYSQL_01="process mysqld or proxy is not running"
+MSG_MYSQL_02="exec mysql command faild"
+MSG_MYSQL_03="Slave_IO_Running or Slave_SQL_Running is 'No'"
+MSG_MYSQL_04="Seconds_Behind_Master is greater than 10"
 
 main() {
     # single-instance mechanism
@@ -93,13 +98,15 @@ getRealMsg() {
     echo $res
 }
 
+curl_path="/data/curl"
 # $1 - cluster type
 # $2 - msg id
 # $3 - robot id
 sendMsg() {
     show_msg=$(getRealMsg $1 $2)
     content=$(cat<<MYCONTENT
-Instance: $INSTANCE_ID, ClusterType: $(echo $1 | tr '[:upper:]' '[:lower:]')
+Instance: $INSTANCE_ID
+ClusterType: $(echo $1 | tr '[:upper:]' '[:lower:]')
 $show_msg
 MYCONTENT
     )
@@ -118,9 +125,7 @@ MYPOSTDATA
 
     # send message
     robot_url=$robot_prefix$3
-    echo "$postData"
-    echo $robot_url
-    # curl -s -XPOST -H 'Content-Type: application/json' $robot_url -d "$postData1" >/dev/null 2>&1 | :
+    $curl_path -s -XPOST -H 'Content-Type: application/json' $robot_url -d "$postData" | :
 }
 
 # just for test
@@ -302,6 +307,43 @@ rediscluster_monitor() {
     real_line_cnt=$(echo "$redis_role_info" | wc -l)
     if [ "$want_line_cnt" -ne "$real_line_cnt" ]; then
         echo "05"
+        return 0
+    fi
+}
+
+mysql_path="/usr/bin/mysql"
+
+mysql_monitor() {
+    if ! pgrep -x mysqld >/dev/null 2>&1 && ! pgrep proxy >/dev/null 2>&1; then
+        echo "01"
+        return 0
+    fi
+    if pgrep proxy >/dev/null 2>&1; then
+        # proxy needn't further check
+        return 0
+    fi
+    if ! MYSQL_PWD=$(cat /data/pitrix.pwd) $mysql_path -uqc_master -e 'show master status\G' >/dev/null 2>&1; then
+        echo "02"
+        return 0
+    fi
+    mysql_slave_raw=""
+    if ! mysql_slave_raw=$(MYSQL_PWD=$(cat /data/pitrix.pwd) $mysql_path -uqc_master -e 'show slave status\G'); then
+        echo "02"
+        return 0
+    fi
+    if [ -z "$mysql_slave_raw" ]; then
+        # master node needn't further check
+        return 0
+    fi
+    slave_io_running=$(echo "$mysql_slave_raw" | sed -n '/Slave_IO_Running:/p' | sed 's/Slave_IO_Running://' | tr -d '[:space:]')
+    slave_sql_running=$(echo "$mysql_slave_raw" | sed -n '/Slave_SQL_Running:/p' | sed 's/Slave_SQL_Running://' | tr -d '[:space:]')
+    if ! [ "$slave_io_running" = "Yes" -a "$slave_sql_running" = "Yes" ]; then
+        echo "03"
+        return 0
+    fi
+    slave_delay=$(echo "$mysql_slave_raw" | sed -n '/Seconds_Behind_Master:/p' | sed 's/Seconds_Behind_Master://' | tr -d '[:space:]')
+    if [ "$slave_delay" -gt 10 ]; then
+        echo "04"
         return 0
     fi
 }
