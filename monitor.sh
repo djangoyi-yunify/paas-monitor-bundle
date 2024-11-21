@@ -98,7 +98,7 @@ getRealMsg() {
     echo $res
 }
 
-curl_path="/data/curl"
+curl_path="/data/qc_paas_monitor/curl"
 # $1 - cluster type
 # $2 - msg id
 # $3 - robot id
