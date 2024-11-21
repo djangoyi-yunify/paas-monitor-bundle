@@ -123,6 +123,9 @@ MYCONTENT
 MYPOSTDATA
     )
 
+    # show message
+    echo "$postData"
+
     # send message
     robot_url=$robot_prefix$3
     $curl_path -s -XPOST -H 'Content-Type: application/json' $robot_url -d "$postData" | :
