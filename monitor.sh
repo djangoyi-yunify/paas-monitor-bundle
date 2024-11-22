@@ -18,12 +18,14 @@ ROBOT_ID=
 robot_prefix="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key="
 
 # redis-cli path
-REDIS_CLI_PATH_LIST="/usr/bin/redis-cli,/opt/redis-3.0.5/bin/redis-cli"
+REDIS_CLI_PATH_LIST="/usr/bin/redis-cli,/opt/redis-3.0.5/bin/redis-cli,/usr/local/redis/src/redis-cli"
+# redis.conf path
+REDIS_CONF_PATH_LIST="/usr/local/redis/redis.conf,/data/redis/redis.conf"
 
 # message definition
 # common
 MSG_C00="wrong input number, do nothing"
-MSG_C01="can't locate the path of redis-cli"
+MSG_C01="can't locate the path of redis-cli or redis.conf"
 MSG_C99="this is a test"
 # mongo
 MSG_MONGO_01="process mongod is not running"
@@ -205,8 +207,19 @@ get_rediscli() {
     else
         res="$real_path"
     fi
-    if [ $# -gt 0 ]; then
-        res="$res -a $1"
+    real_conf=""
+    for line in $(echo $REDIS_CONF_PATH_LIST | tr ',' '\n'); do
+        if [ -f "$line" ]; then
+            real_conf=$line
+            break
+        fi
+    done
+    if [ -z "$real_conf" ]; then
+        return
+    fi
+    pass_raw=$(cat $real_conf | sed -n '/^requirepass/p' | sed 's/^requirepass//' | tr -d [:space:])
+    if [ -n "$pass_raw" ]; then
+        res="$res -a $pass_raw"
     fi
     echo "$res"
 }
