@@ -56,7 +56,7 @@ MSG_MYSQL_04="Seconds_Behind_Master is greater than 10"
 main() {
     # single-instance mechanism
     if [ -e $CHECK_LOCK_PATH ] && kill -0 $(cat $CHECK_LOCK_PATH); then
-        log "health check is already running, skipping"
+        echo "health check is already running, skipping"
         return 0
     fi
 
